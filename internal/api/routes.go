@@ -45,6 +45,7 @@ func (a *App) Handler() http.Handler {
 		api.Get("/dispatch/plans", a.listPlans)
 		api.Post("/dispatch/plans", a.createPlan)
 		api.Post("/dispatch/plans/{planID}/publish", a.publishPlan)
+		api.Post("/dispatch/plans/{planID}/cancel", a.cancelPlan)
 		api.Post("/dispatch/holds", a.applyHold)
 		api.Delete("/dispatch/holds/{stationID}", a.releaseHold)
 		api.Post("/dispatch/buffer", a.bufferCommand)

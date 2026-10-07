@@ -2,6 +2,7 @@ package station
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -10,11 +11,12 @@ type CommandService struct {
 	registry *Registry
 	mu       sync.Mutex
 	last     map[string]Command
+	applied  map[string]Command
 	rejected []Command
 }
 
 func NewCommandService(registry *Registry) *CommandService {
-	return &CommandService{registry: registry, last: make(map[string]Command), rejected: make([]Command, 0)}
+	return &CommandService{registry: registry, last: make(map[string]Command), applied: make(map[string]Command), rejected: make([]Command, 0)}
 }
 
 func (s *CommandService) Apply(command Command) (Command, error) {
@@ -47,6 +49,7 @@ func (s *CommandService) Apply(command Command) (Command, error) {
 	}
 	command.Status = "applied"
 	s.last[command.StationID] = command
+	s.applied[command.ID] = command
 	return command, nil
 }
 
@@ -61,4 +64,31 @@ func (s *CommandService) Rejected() []Command {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]Command(nil), s.rejected...)
+}
+
+// AppliedByPlan returns commands originating from planID that were executed
+// at a station. The dispatch cancel flow uses this to report executed
+// commands truthfully instead of pretending they can be rolled back.
+func (s *CommandService) AppliedByPlan(planID string) []Command {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]Command, 0)
+	if planID == "" {
+		return result
+	}
+	for _, command := range s.applied {
+		if command.PlanID == planID {
+			result = append(result, command)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StationID != result[j].StationID {
+			return result[i].StationID < result[j].StationID
+		}
+		if result[i].Epoch == result[j].Epoch {
+			return result[i].Sequence < result[j].Sequence
+		}
+		return result[i].Epoch < result[j].Epoch
+	})
+	return result
 }

@@ -37,13 +37,13 @@ func (r *Reconnector) Reconnect(stationID string, currentEpoch uint64) (ReplayRe
 	result := ReplayResult{StationID: stationID, Epoch: currentEpoch, At: time.Now().UTC()}
 	for _, buffered := range retired {
 		result.Rejected = append(result.Rejected, station.Command{
-			ID: buffered.CommandID, StationID: buffered.StationID, Epoch: buffered.Epoch,
+			ID: buffered.CommandID, StationID: buffered.StationID, PlanID: buffered.PlanID, Epoch: buffered.Epoch,
 			Sequence: buffered.Sequence, Celsius: buffered.Celsius, Status: "rejected_old_epoch", At: buffered.QueuedAt,
 		})
 	}
 	for _, buffered := range ready {
 		command, err := r.commands.Apply(station.Command{
-			ID: buffered.CommandID, StationID: stationID, Epoch: buffered.Epoch,
+			ID: buffered.CommandID, StationID: stationID, PlanID: buffered.PlanID, Epoch: buffered.Epoch,
 			Sequence: buffered.Sequence, Celsius: buffered.Celsius, At: buffered.QueuedAt,
 		})
 		if err != nil {

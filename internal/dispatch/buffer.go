@@ -19,12 +19,12 @@ func NewBuffer() *Buffer {
 	return &Buffer{commands: make(map[string][]BufferedCommand), accepted: make(map[string]uint64)}
 }
 
-func (b *Buffer) Enqueue(stationID string, epoch, sequence uint64, celsius float64) (BufferedCommand, error) {
+func (b *Buffer) Enqueue(stationID, planID string, epoch, sequence uint64, celsius float64) (BufferedCommand, error) {
 	if stationID == "" || epoch == 0 || sequence == 0 {
 		return BufferedCommand{}, fmt.Errorf("buffered command identity is incomplete")
 	}
 	command := BufferedCommand{
-		StationID: stationID, CommandID: uuid.NewString(), Epoch: epoch,
+		StationID: stationID, CommandID: uuid.NewString(), PlanID: planID, Epoch: epoch,
 		Sequence: sequence, Celsius: celsius, QueuedAt: time.Now().UTC(),
 	}
 	b.mu.Lock()
@@ -69,4 +69,41 @@ func (b *Buffer) Pending(stationID string) []BufferedCommand {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]BufferedCommand(nil), b.commands[stationID]...)
+}
+
+// PurgePlan removes every pending command queued for planID and returns what
+// was removed. Commands already drained for replay are no longer held here
+// and are never touched by a purge.
+func (b *Buffer) PurgePlan(planID string) []BufferedCommand {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	purged := make([]BufferedCommand, 0)
+	if planID == "" {
+		return purged
+	}
+	for stationID, commands := range b.commands {
+		kept := commands[:0]
+		for _, command := range commands {
+			if command.PlanID == planID {
+				purged = append(purged, command)
+				continue
+			}
+			kept = append(kept, command)
+		}
+		if len(kept) == 0 {
+			delete(b.commands, stationID)
+			continue
+		}
+		b.commands[stationID] = kept
+	}
+	sort.Slice(purged, func(i, j int) bool {
+		if purged[i].StationID != purged[j].StationID {
+			return purged[i].StationID < purged[j].StationID
+		}
+		if purged[i].Epoch == purged[j].Epoch {
+			return purged[i].Sequence < purged[j].Sequence
+		}
+		return purged[i].Epoch < purged[j].Epoch
+	})
+	return purged
 }

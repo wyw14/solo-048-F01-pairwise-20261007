@@ -9,6 +9,7 @@ const (
 	PlanPublished   PlanStatus = "published"
 	PlanStale       PlanStatus = "stale"
 	PlanFailed      PlanStatus = "failed"
+	PlanCanceled    PlanStatus = "canceled"
 )
 
 type Plan struct {
@@ -18,6 +19,7 @@ type Plan struct {
 	Status         PlanStatus         `json:"status"`
 	CreatedAt      time.Time          `json:"created_at"`
 	PublishedAt    time.Time          `json:"published_at,omitempty"`
+	Cancellation   *CancelReport      `json:"cancellation,omitempty"`
 	Message        string             `json:"message,omitempty"`
 }
 
@@ -27,12 +29,14 @@ func (p Plan) Clone() Plan {
 	for stationID, value := range p.Targets {
 		copy.Targets[stationID] = value
 	}
+	copy.Cancellation = p.Cancellation.Clone()
 	return copy
 }
 
 type BufferedCommand struct {
 	StationID string    `json:"station_id"`
 	CommandID string    `json:"command_id"`
+	PlanID    string    `json:"plan_id,omitempty"`
 	Epoch     uint64    `json:"epoch"`
 	Sequence  uint64    `json:"sequence"`
 	Celsius   float64   `json:"celsius"`

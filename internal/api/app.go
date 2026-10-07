@@ -57,6 +57,7 @@ type App struct {
 	Targets              *station.TargetService
 	Planner              *dispatch.Planner
 	Publisher            *dispatch.Publisher
+	Canceler             *dispatch.Canceler
 	DispatchBuffer       *dispatch.Buffer
 	StationCommands      *station.CommandService
 	Reconnector          *recovery.Reconnector
@@ -129,6 +130,7 @@ func NewApp(dataDirectory string) (*App, error) {
 	app.LeakProtection = protection.NewLeakProtection(app.LeakDetector)
 	app.ExchangerSwitch = exchanger.NewSwitchService(stations, flowReceipts, primary)
 	app.Publisher = dispatch.NewPublisher(planner, targets, recorder)
+	app.Canceler = dispatch.NewCanceler(planner, dispatchBuffer, stationCommands, recorder)
 	app.Reconnector = recovery.NewReconnector(dispatchBuffer, stations, stationCommands, recorder)
 	app.ZoneRecovery = recovery.NewZoneRecovery(networkState, networkRegistry, warmup, pressure)
 	if err := app.seed(); err != nil {
