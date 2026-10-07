@@ -50,6 +50,23 @@ func (p *Planner) save(plan Plan) {
 	p.plans[plan.ID] = plan.Clone()
 }
 
+// commit applies change to a plan while holding the write lock, so a
+// publish and a cancel can never claim the same calculating plan. The
+// mutated plan is persisted even when change returns an error (for example
+// a publish that fails CAS is still recorded as stale).
+func (p *Planner) commit(planID string, change func(*Plan) error) (Plan, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	plan, ok := p.plans[planID]
+	if !ok {
+		return Plan{}, ErrPlanNotFound
+	}
+	updated := plan.Clone()
+	err := change(&updated)
+	p.plans[planID] = updated.Clone()
+	return updated, err
+}
+
 func (p *Planner) Plan(planID string) (Plan, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

@@ -45,6 +45,7 @@ type Target struct {
 type Command struct {
 	ID        string    `json:"id"`
 	StationID string    `json:"station_id"`
+	PlanID    string    `json:"plan_id,omitempty"`
 	Epoch     uint64    `json:"epoch"`
 	Sequence  uint64    `json:"sequence"`
 	Celsius   float64   `json:"celsius"`

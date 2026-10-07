@@ -1,6 +1,9 @@
 package dispatch
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type PlanStatus string
 
@@ -9,7 +12,10 @@ const (
 	PlanPublished   PlanStatus = "published"
 	PlanStale       PlanStatus = "stale"
 	PlanFailed      PlanStatus = "failed"
+	PlanCanceled    PlanStatus = "canceled"
 )
+
+var ErrPlanNotFound = errors.New("dispatch plan not found")
 
 type Plan struct {
 	ID             string             `json:"id"`
@@ -18,6 +24,7 @@ type Plan struct {
 	Status         PlanStatus         `json:"status"`
 	CreatedAt      time.Time          `json:"created_at"`
 	PublishedAt    time.Time          `json:"published_at,omitempty"`
+	CanceledAt     time.Time          `json:"canceled_at,omitempty"`
 	Message        string             `json:"message,omitempty"`
 }
 
@@ -32,6 +39,7 @@ func (p Plan) Clone() Plan {
 
 type BufferedCommand struct {
 	StationID string    `json:"station_id"`
+	PlanID    string    `json:"plan_id,omitempty"`
 	CommandID string    `json:"command_id"`
 	Epoch     uint64    `json:"epoch"`
 	Sequence  uint64    `json:"sequence"`

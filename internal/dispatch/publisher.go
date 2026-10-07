@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,31 +12,41 @@ import (
 type Publisher struct {
 	planner *Planner
 	targets *station.TargetService
+	buffer  *Buffer
 	audit   *audit.Recorder
 }
 
-func NewPublisher(planner *Planner, targets *station.TargetService, recorder *audit.Recorder) *Publisher {
-	return &Publisher{planner: planner, targets: targets, audit: recorder}
+func NewPublisher(planner *Planner, targets *station.TargetService, buffer *Buffer, recorder *audit.Recorder) *Publisher {
+	return &Publisher{planner: planner, targets: targets, buffer: buffer, audit: recorder}
 }
 
 func (p *Publisher) Publish(planID, actor string) (Plan, error) {
-	plan, ok := p.planner.Plan(planID)
-	if !ok {
-		return Plan{}, fmt.Errorf("plan %s not found", planID)
-	}
-	if plan.Status != PlanCalculating {
-		return plan, fmt.Errorf("plan %s is %s", plan.ID, plan.Status)
-	}
-	if err := p.targets.CompareAndPublish(plan.SourceRevision, plan.Targets); err != nil {
-		plan.Status = PlanStale
-		plan.Message = err.Error()
-		p.planner.save(plan)
-		_ = p.audit.Rejected("dispatch.publish", plan.ID, actor, err.Error(), map[string]any{"source_revision": plan.SourceRevision})
+	plan, err := p.planner.commit(planID, func(plan *Plan) error {
+		if plan.Status != PlanCalculating {
+			return fmt.Errorf("plan %s is %s", plan.ID, plan.Status)
+		}
+		if err := p.targets.CompareAndPublish(plan.SourceRevision, plan.Targets); err != nil {
+			plan.Status = PlanStale
+			plan.Message = err.Error()
+			p.buffer.ClosePlan(plan.ID)
+			return err
+		}
+		plan.Status = PlanPublished
+		plan.PublishedAt = time.Now().UTC()
+		// Terminal state: no further buffered commands may attach to the
+		// plan; queued ones remain available for replay.
+		p.buffer.ClosePlan(plan.ID)
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, ErrPlanNotFound) {
+			return plan, fmt.Errorf("plan %s not found", planID)
+		}
+		if plan.Status == PlanStale {
+			_ = p.audit.Rejected("dispatch.publish", plan.ID, actor, err.Error(), map[string]any{"source_revision": plan.SourceRevision})
+		}
 		return plan, err
 	}
-	plan.Status = PlanPublished
-	plan.PublishedAt = time.Now().UTC()
-	p.planner.save(plan)
 	if err := p.audit.Accepted("dispatch.publish", plan.ID, actor, "dispatch targets published", map[string]any{"source_revision": plan.SourceRevision}); err != nil {
 		return plan, err
 	}

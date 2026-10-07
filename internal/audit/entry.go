@@ -5,10 +5,11 @@ import "time"
 type Outcome string
 
 const (
-	OutcomeAccepted  Outcome = "accepted"
-	OutcomeRejected  Outcome = "rejected"
-	OutcomeCompleted Outcome = "completed"
-	OutcomeFailed    Outcome = "failed"
+	OutcomeAccepted    Outcome = "accepted"
+	OutcomeRejected    Outcome = "rejected"
+	OutcomeCompleted   Outcome = "completed"
+	OutcomeFailed      Outcome = "failed"
+	OutcomeCompensated Outcome = "compensated"
 )
 
 type Entry struct {

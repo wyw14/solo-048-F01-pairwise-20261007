@@ -1,10 +1,14 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"heatpulse/internal/dispatch"
 )
 
 func (a *App) listPlans(w http.ResponseWriter, _ *http.Request) {
@@ -44,6 +48,26 @@ func (a *App) publishPlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, plan)
 }
 
+func (a *App) cancelPlan(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Actor string `json:"actor"`
+	}
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := a.Canceller.Cancel(chi.URLParam(r, "planID"), input.Actor)
+	if err != nil {
+		if errors.Is(err, dispatch.ErrPlanNotFound) {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (a *App) applyHold(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		StationIDs []string `json:"station_ids"`
@@ -73,6 +97,7 @@ func (a *App) releaseHold(w http.ResponseWriter, r *http.Request) {
 func (a *App) bufferCommand(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		StationID string  `json:"station_id"`
+		PlanID    string  `json:"plan_id"`
 		Epoch     uint64  `json:"epoch"`
 		Sequence  uint64  `json:"sequence"`
 		Celsius   float64 `json:"celsius"`
@@ -81,8 +106,23 @@ func (a *App) bufferCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	command, err := a.DispatchBuffer.Enqueue(input.StationID, input.Epoch, input.Sequence, input.Celsius)
+	if input.PlanID != "" {
+		plan, ok := a.Planner.Plan(input.PlanID)
+		if !ok {
+			writeError(w, http.StatusNotFound, errors.New("dispatch plan not found"))
+			return
+		}
+		if plan.Status != dispatch.PlanCalculating {
+			writeError(w, http.StatusConflict, fmt.Errorf("plan %s is %s", plan.ID, plan.Status))
+			return
+		}
+	}
+	command, err := a.DispatchBuffer.EnqueueForPlan(input.StationID, input.PlanID, input.Epoch, input.Sequence, input.Celsius)
 	if err != nil {
+		if errors.Is(err, dispatch.ErrPlanClosed) {
+			writeError(w, http.StatusConflict, err)
+			return
+		}
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
